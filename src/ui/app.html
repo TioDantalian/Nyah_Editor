@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenDTP Studio — Editoração Visual Profissional</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #090d16;
+      color: #f8fafc;
+      user-select: none;
+    }
+
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Top Navigation Header */
+    header {
+      height: 48px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 20;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.5px;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      background: #0284c7;
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+    .doc-meta {
+      font-size: 12px;
+      color: #94a3b8;
+      border-left: 1px solid #334155;
+      padding-left: 12px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      background: #334155;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover:not(:disabled) {
+      background: #475569;
+      border-color: #64748b;
+    }
+    .btn:active:not(:disabled) {
+      background: #1e293b;
+    }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #0369a1;
+      border-color: #0284c7;
+    }
+
+    /* Main Workspace Layout */
+    #workspace {
+      display: flex;
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Left Tools Palette */
+    #toolbox {
+      width: 48px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 0;
+      gap: 6px;
+      z-index: 15;
+    }
+
+    .tool-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    .tool-btn:hover {
+      background: #334155;
+      color: #f8fafc;
+    }
+    .tool-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+    }
+    .tool-btn .hotkey {
+      position: absolute;
+      bottom: 2px;
+      right: 4px;
+      font-size: 9px;
+      opacity: 0.7;
+      font-weight: bold;
+    }
+    .tool-btn * {
+      pointer-events: none;
+    }
+
+    /* Center Canvas Area with Rulers */
+    #canvas-wrapper {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #0b1120;
+    }
+
+    #ruler-corner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 24px;
+      height: 24px;
+      background: #0f172a;
+      border-right: 1px solid #334155;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #38bdf8;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s, color 0.15s;
+      z-index: 12;
+    }
+
+    #ruler-corner:hover {
+      background: #1e293b;
+      color: #7dd3fc;
+    }
+
+    #ruler-top {
+      position: absolute;
+      top: 0;
+      left: 24px;
+      width: calc(100% - 24px);
+      height: 24px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      z-index: 10;
+      display: block;
+    }
+
+    #ruler-left {
+      position: absolute;
+      top: 24px;
+      left: 0;
+      width: 24px;
+      height: calc(100% - 24px);
+      background: #0f172a;
+      border-right: 1px solid #334155;
+      z-index: 10;
+      display: block;
+    }
+
+    #stage-container {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
+    /* Right Properties Inspector */
+    #inspector {
+      width: 300px;
+      background: #1e293b;
+      border-left: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      z-index: 15;
+      overflow-y: auto;
+    }
+
+    .inspector-header {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #94a3b8;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .inspector-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .prop-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .prop-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .prop-field label {
+      font-size: 10px;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .prop-field input {
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 12px;
+      color: #f8fafc;
+      font-family: monospace;
+    }
+    .prop-field input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+
+    .type-pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .type-pill.text { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+    .type-pill.image { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
+    .type-pill.shape { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+    /* Bottom Status Bar */
+    footer {
+      height: 28px;
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      font-size: 11px;
+      color: #64748b;
+      z-index: 20;
+    }
+    .status-left, .status-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .status-item span {
+      color: #94a3b8;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top Header -->
+    <header>
+      <div class="brand">
+        <h1>OpenDTP Studio</h1>
+        <span class="badge">Konva DTP v0.1</span>
+        <div class="doc-meta" id="lblDocMeta">A4 Spreads Duplas • 210 x 297 mm • Sangria 3 mm</div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn" id="btnUndo" title="Desfazer (Ctrl+Z)">
+          ↩ Desfazer
+        </button>
+        <button class="btn" id="btnRedo" title="Refazer (Ctrl+Y)">
+          ↪ Refazer
+        </button>
+        <div style="width: 1px; height: 20px; background: #334155; margin: 0 4px;"></div>
+        <button class="btn" id="btnZoomOut" title="Diminuir Zoom">−</button>
+        <button class="btn" id="btnZoomReset" title="Zoom 100%"><span id="lblZoom">100%</span></button>
+        <button class="btn" id="btnZoomIn" title="Aumentar Zoom">+</button>
+        <button class="btn" id="btnZoomFit" title="Ajustar à Janela">Ajustar</button>
+        <div style="width: 1px; height: 20px; background: #334155; margin: 0 4px;"></div>
+        <button class="btn btn-primary" id="btnExportPdf" title="Exportar para PDF ISO 32000-1">
+          📥 Exportar PDF
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace -->
+    <div id="workspace">
+      <!-- Left Tools Palette -->
+      <div id="toolbox">
+        <button class="tool-btn active" data-tool="select" title="Ferramenta de Seleção (V)">
+          <svg width="18" height="20" viewBox="0 0 61 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9.76249 9.72316C10.8748 3.96251 18.1365 2.01676 21.9801 6.44947L55.2513 44.8202C59.0803 49.236 56.164 56.1242 50.3283 56.4484L30.6146 57.5434C29.6455 57.5972 28.6979 57.8511 27.8317 58.2891L10.2117 67.1976C4.99578 69.8347 -0.973931 65.3274 0.134128 59.5887L9.76249 9.72316Z" fill="rgba(0,0,0,0.5)"/>
+            <path d="M15.2602 5.99029C16.1342 1.46429 21.8398 -0.0645015 24.8598 3.41798L58.1312 41.7888C61.1396 45.2584 58.8481 50.6707 54.2629 50.9253L34.5497 52.0202C33.3728 52.0856 32.2218 52.3939 31.1699 52.9257L13.5503 61.8346C9.45206 63.9067 4.76162 60.365 5.63221 55.8561L15.2602 5.99029Z" fill="white" stroke="#0284c7" stroke-width="3"/>
+          </svg>
+          <span class="hotkey">V</span>
+        </button>
+        <button class="tool-btn" data-tool="text" title="Quadro de Texto (T)">
+          <span>T</span>
+          <span class="hotkey">T</span>
+        </button>
+        <button class="tool-btn" data-tool="image" title="Moldura de Imagem (F)">
+          <span>☒</span>
+          <span class="hotkey">F</span>
+        </button>
+        <button class="tool-btn" data-tool="shape" title="Retângulo / Forma (M)">
+          <span>▭</span>
+          <span class="hotkey">M</span>
+        </button>
+        <button class="tool-btn" data-tool="pan" title="Mão / Navegação (H)">
+          <span>✋</span>
+          <span class="hotkey">H</span>
+        </button>
+      </div>
+
+      <!-- Center Canvas Area -->
+      <div id="canvas-wrapper">
+        <div id="ruler-corner" title="Alternar Unidade: Centímetros (cm) / Milímetros (mm)">cm</div>
+        <canvas id="ruler-top" height="24"></canvas>
+        <canvas id="ruler-left" width="24"></canvas>
+        <div id="stage-container"></div>
+      </div>
+
+      <!-- Right Properties Inspector -->
+      <div id="inspector">
+        <div class="inspector-header">
+          <span>Inspetor de Propriedades</span>
+        </div>
+
+        <div id="inspector-content">
+          <!-- Injetado dinamicamente via app.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Status Bar -->
+    <footer>
+      <div class="status-left">
+        <div class="status-item" id="statCursor">Coordenadas: <span>0.0, 0.0 mm</span></div>
+        <div class="status-item" id="statSelection">Seleção: <span>Nenhum quadro</span></div>
+      </div>
+      <div class="status-right">
+        <div class="status-item">Páginas: <span>Spread 1 (Pág. 1)</span></div>
+        <div class="status-item">Motor Gráfico: <span style="color: #4ade80;">Konva.js • 60 FPS</span></div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Konva Engine (Local) -->
+  <script src="konva.min.js"></script>
+
+  <!-- OpenDTP Core Engine (Bundled Scope-Safe) -->
+  <script src="opendtp.bundle.js"></script>
+
+  <!-- Studio Controller -->
+  <script src="app.js"></script>
+</body>
+</html>

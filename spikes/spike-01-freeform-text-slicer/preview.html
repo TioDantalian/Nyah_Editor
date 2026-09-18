@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenDTP — Arquitetura Modular de Fatiamento & Fluxo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 10px;
+    }
+    h1 { font-size: 18px; font-weight: 600; color: #38bdf8; }
+    .badge {
+      background: #0284c7;
+      color: #f0f9ff;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+    }
+    .panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .panel h2 { font-size: 12px; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    label {
+      font-size: 11px;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      font-weight: 500;
+    }
+    select, input[type="range"] {
+      width: 100%;
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 6px;
+      border-radius: 5px;
+      outline: none;
+      font-size: 12px;
+    }
+    .mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .mode-btn {
+      padding: 7px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 5px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #94a3b8;
+      cursor: pointer;
+      text-align: center;
+    }
+    .mode-btn.active {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #cbd5e1;
+      cursor: pointer;
+    }
+    .metrics {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: #38bdf8;
+    }
+    .stage-container {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 24px;
+      overflow-x: auto;
+    }
+    .page-box {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .page-label {
+      position: absolute;
+      top: -20px;
+      left: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <h1>OpenDTP — Pipeline Modular Desacoplado</h1>
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Arquitetura em 4 camadas ortogonais: Geometria &bull; Medição &bull; Fluxo &bull; Alinhamento</p>
+    </div>
+    <span class="badge">ARQUITETURA MODULAR</span>
+  </header>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>1. Módulo Geométrico (Geometry)</h2>
+      <div class="mode-selector">
+        <div class="mode-btn" id="btnModePositive">Positivo (No Molde)</div>
+        <div class="mode-btn active" id="btnModeNegative">Negativo (Wrap)</div>
+      </div>
+
+      <div id="controlsPositive" style="display: none;">
+        <div class="control-group">
+          <label>Molde Geométrico:</label>
+          <select id="shapeSelect">
+            <option value="asymmetric">Polígono Assimétrico</option>
+            <option value="circle">Círculo Perfeito</option>
+            <option value="star">Estrela de 5 Pontas</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="controlsNegative">
+        <div class="control-group">
+          <label>Tipo de Obstáculo:</label>
+          <select id="selectObstacleType">
+            <option value="erratic" selected>Mancha Errática (16 Vértices)</option>
+            <option value="circle">Círculo Suave</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>Política de Contorno (Wrap Policy):</label>
+          <select id="selectWrapMode">
+            <option value="both" selected>Ambos os Lados (Both Sides)</option>
+            <option value="largest">Apenas Lado Maior (Largest Area)</option>
+            <option value="jump">Pular Objeto (Jump Object)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>Margem de Afastamento: <span id="valWrapMargin">16px</span></label>
+          <input type="range" id="inputWrapMargin" min="0" max="40" value="16">
+        </div>
+
+        <div class="control-group">
+          <label>Iterações de Suavização (Chaikin): <span id="valSmoothing">2 iterações</span></label>
+          <input type="range" id="inputSmoothing" min="0" max="4" value="2">
+        </div>
+
+        <div class="control-group">
+          <label>Posição X do Obstáculo: <span id="valObsX">180px</span></label>
+          <input type="range" id="inputObsX" min="40" max="300" value="180">
+        </div>
+        <div class="control-group">
+          <label>Posição Y do Obstáculo: <span id="valObsY">200px</span></label>
+          <input type="range" id="inputObsY" min="60" max="320" value="200">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Filtro de Segmento Mínimo: <span id="valMinSegment">60px</span></label>
+        <input type="range" id="inputMinSegment" min="0" max="180" value="60">
+      </div>
+
+      <h2>2. Módulo de Tipografia (Metrics)</h2>
+      <div class="control-group">
+        <label>Tamanho da Fonte: <span id="valFontSize">18px</span></label>
+        <input type="range" id="inputFontSize" min="10" max="28" value="18">
+      </div>
+      <div class="control-group">
+        <label>Entrelinha (Leading): <span id="valLineHeight">23px</span></label>
+        <input type="range" id="inputLineHeight" min="12" max="38" value="23">
+      </div>
+
+      <h2>3. Estratégia de Alinhamento (Strategy)</h2>
+      <div class="control-group">
+        <label>Modo de Alinhamento:</label>
+        <select id="selectAlignment">
+          <option value="justify" selected>Justificado (Com Tolerância Limite)</option>
+          <option value="left">Alinhado à Esquerda (Flush Left)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Tolerância Máxima de Espaçamento: <span id="valMaxSpacing">1.8x</span></label>
+        <input type="range" id="inputMaxSpacing" min="10" max="35" value="18">
+      </div>
+
+      <h2>4. Hifenização Silábica (Liang / ABL)</h2>
+      <label class="toggle-row" style="margin-bottom: 8px;">
+        <input type="checkbox" id="checkHyphenation" checked>
+        Ativar Hifenização Silábica
+      </label>
+      <div id="hyphenOptionsBlock">
+        <div class="control-group">
+          <label>Tam. Mínimo de Palavra: <span id="valMinWordLen">5 letras</span></label>
+          <input type="range" id="inputMinWordLen" min="3" max="10" value="5">
+        </div>
+        <div class="control-group">
+          <label>Mínimo Antes do Hífen: <span id="valMinBefore">2 letras</span></label>
+          <input type="range" id="inputMinBefore" min="1" max="4" value="2">
+        </div>
+        <div class="control-group">
+          <label>Mínimo Depois do Hífen: <span id="valMinAfter">2 letras</span></label>
+          <input type="range" id="inputMinAfter" min="1" max="4" value="2">
+        </div>
+        <div class="control-group">
+          <label>Limite Hífens Consecutivos: <span id="valHyphenLimit">3 linhas</span></label>
+          <input type="range" id="inputHyphenLimit" min="1" max="5" value="3">
+        </div>
+      </div>
+
+      <h2>Visualização de Camadas</h2>
+      <label class="toggle-row">
+        <input type="checkbox" id="checkShowEnvelope" checked>
+        Exibir Envelope Geométrico
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="checkShowScanlines" checked>
+        Exibir Fatias de Varredura
+      </label>
+
+      <div class="metrics" id="metricsBox">
+        <div>⚡ Tempo Total: Carregando...</div>
+      </div>
+    </div>
+
+    <div class="stage-container">
+      <div class="page-box" id="page1" style="width: 440px; height: 500px;">
+        <span class="page-label" id="labelPage1">PÁGINA 1</span>
+        <canvas id="canvas1" width="440" height="500"></canvas>
+      </div>
+
+      <div class="page-box" id="page2" style="width: 320px; height: 500px;">
+        <span class="page-label" id="labelPage2">PÁGINA 2 (FRAME VINCULADO)</span>
+        <canvas id="canvas2" width="320" height="500"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================================
+    // MÓDULO 1: GEOMETRIA PURA (GEOMETRY ENGINE)
+    // ========================================================================
+    const GeometryEngine = {
+      getIntersectionX(y, p1, p2) {
+        const minY = Math.min(p1.y, p2.y);
+        const maxY = Math.max(p1.y, p2.y);
+        if (y < minY || y >= maxY || p1.y === p2.y) return null;
+        return p1.x + ((y - p1.y) / (p2.y - p1.y)) * (p2.x - p1.x);
+      },
+
+      smoothPoints(points, iterations) {
+        let cur = points;
+        for (let it = 0; it < iterations; it++) {
+          const next = [];
+          for (let i = 0; i < cur.length; i++) {
+            const p1 = cur[i], p2 = cur[(i + 1) % cur.length];
+            next.push({ x: 0.75 * p1.x + 0.25 * p2.x, y: 0.75 * p1.y + 0.25 * p2.y });
+            next.push({ x: 0.25 * p1.x + 0.75 * p2.x, y: 0.25 * p1.y + 0.75 * p2.y });
+          }
+          cur = next;
+        }
+        return cur;
+      },
+
+      offsetPolygon(points, distance) {
+        if (distance === 0) return points;
+        let cx = 0, cy = 0;
+        for (const p of points) { cx += p.x; cy += p.y; }
+        cx /= points.length; cy /= points.length;
+        return points.map(p => {
+          const dx = p.x - cx, dy = p.y - cy;
+          const len = Math.hypot(dx, dy);
+          return len === 0 ? p : { x: p.x + (dx / len) * distance, y: p.y + (dy / len) * distance };
+        });
+      },
+
+      subtractIntervals(segments, cutStart, cutEnd) {
+        const out = [];
+        for (const s of segments) {
+          const sEnd = s.x + s.width;
+          if (cutEnd <= s.x || cutStart >= sEnd) { out.push(s); continue; }
+          if (cutStart > s.x) out.push({ x: s.x, width: cutStart - s.x });
+          if (cutEnd < sEnd) out.push({ x: cutEnd, width: sEnd - cutEnd });
+        }
+        return out;
+      },
+
+      computeSlices(container, obstacles = [], config = {}) {
+        const { lineHeight, wrapMargin = 0, smoothing = 0, minWidth = 0, wrapMode = 'both' } = config;
+        const slices = [];
+
+        // Determinar limites verticais (startY, endY) do container
+        let startY = 0;
+        let endY = 0;
+        if (container.type === 'circle') {
+          startY = container.cy - container.radius;
+          endY = container.cy + container.radius;
+        } else if (container.type === 'polygon') {
+          const ys = container.points.map(p => p.y);
+          startY = Math.min(...ys);
+          endY = Math.max(...ys);
+        } else {
+          startY = container.y;
+          endY = container.y + container.height;
+        }
+
+        // Pré-processamento paramétrico de polígonos de obstáculos
+        const processedObstacles = (obstacles || []).map(obs => {
+          if (obs.type === 'polygon') {
+            const expanded = GeometryEngine.offsetPolygon(obs.points, wrapMargin);
+            const smoothed = smoothing > 0 ? GeometryEngine.smoothPoints(expanded, smoothing) : expanded;
+            return { type: 'polygon', points: smoothed };
+          }
+          return obs;
+        });
+
+        for (let y = startY; y < endY; y += lineHeight) {
+          const midY = y + lineHeight / 2;
+
+          // 1. Gera segmentos base DENTRO do container
+          let segs = [];
+          if (container.type === 'circle') {
+            const dy = Math.abs(midY - container.cy);
+            if (dy < container.radius) {
+              const dx = Math.sqrt(container.radius * container.radius - dy * dy);
+              segs = [{ x: container.cx - dx, width: 2 * dx }];
+            }
+          } else if (container.type === 'polygon') {
+            const inter = [];
+            const n = container.points.length;
+            for (let i = 0; i < n; i++) {
+              const p1 = container.points[i], p2 = container.points[(i + 1) % n];
+              const x = GeometryEngine.getIntersectionX(midY, p1, p2);
+              if (x !== null) inter.push(x);
+            }
+            if (inter.length >= 2) {
+              inter.sort((a, b) => a - b);
+              for (let i = 0; i < inter.length - 1; i += 2) {
+                segs.push({ x: inter[i], width: inter[i + 1] - inter[i] });
+              }
+            }
+          } else {
+            segs = [{ x: container.x, width: container.width }];
+          }
+
+          if (segs.length === 0) continue;
+
+          // 2. Subtrai obstáculos (se existirem)
+          if (wrapMode === 'jump' && processedObstacles.length > 0) {
+            let inside = false;
+            for (const o of processedObstacles) {
+              if (o.type === 'circle' && Math.abs(midY - o.cy) < o.radius + wrapMargin) { inside = true; break; }
+              if (o.type === 'polygon') {
+                const ys = o.points.map(p => p.y);
+                if (midY >= Math.min(...ys) && midY <= Math.max(...ys)) { inside = true; break; }
+              }
+            }
+            if (inside) continue;
+          }
+
+          for (const o of processedObstacles) {
+            const cuts = [];
+            if (o.type === 'circle') {
+              const r = o.radius + wrapMargin;
+              const dy = midY - o.cy;
+              if (Math.abs(dy) < r) {
+                const dx = Math.sqrt(r * r - dy * dy);
+                cuts.push({ start: o.cx - dx, end: o.cx + dx });
+              }
+            } else if (o.type === 'polygon') {
+              const inter = [];
+              for (let i = 0; i < o.points.length; i++) {
+                const x = GeometryEngine.getIntersectionX(midY, o.points[i], o.points[(i + 1) % o.points.length]);
+                if (x !== null) inter.push(x);
+              }
+              if (inter.length >= 2) {
+                inter.sort((a, b) => a - b);
+                for (let i = 0; i < inter.length - 1; i += 2) cuts.push({ start: inter[i], end: inter[i + 1] });
+              }
+            }
+
+            for (const c of cuts) {
+              segs = GeometryEngine.subtractIntervals(segs, c.start, c.end);
+            }
+          }
+
+          let filtered = segs.filter(s => s.width >= minWidth);
+          if (wrapMode === 'largest' && filtered.length > 1) {
+            filtered.sort((a, b) => b.width - a.width);
+            filtered = [filtered[0]];
+          }
+
+          if (filtered.length > 0) {
+            filtered.sort((a, b) => a.x - b.x);
+            slices.push({ y, height: lineHeight, segments: filtered });
+          }
+        }
+
+        return { slices, processedObstacles };
+      }
+    };
+
+    // ========================================================================
+    // MÓDULO: HIFENIZAÇÃO SILÁBICA (HYPHENATOR - LIANG / ABL)
+    // ========================================================================
+    const Hyphenator = {
+      VOWELS: 'aeiouáéíóúâêîôûãõàèìòùäëïöü',
+
+      isVowel(c) {
+        return c && this.VOWELS.includes(c.toLowerCase());
+      },
+
+      isConsonant(c) {
+        return c && /[a-z]/i.test(c) && !this.isVowel(c);
+      },
+
+      syllabify(word) {
+        const match = word.match(/^([^\wáéíóúâêîôûãõàèìòùç]*)([\wáéíóúâêîôûãõàèìòùç]+)([^\wáéíóúâêîôûãõàèìòùç]*)$/i);
+        if (!match) return [word];
+
+        const prefix = match[1];
+        const core = match[2];
+        const suffix = match[3];
+
+        if (core.length <= 3) return [word];
+
+        const letters = core.split('');
+        const syllables = [];
+        let cur = '';
+
+        for (let i = 0; i < letters.length; i++) {
+          cur += letters[i];
+          const c = letters[i];
+          const next = letters[i + 1];
+          const next2 = letters[i + 2];
+
+          if (!next) break;
+
+          // Dígrafos inseparáveis: ch, lh, nh, qu, gu
+          const digraph = (c + next).toLowerCase();
+          if (['ch', 'lh', 'nh', 'qu', 'gu'].includes(digraph)) {
+            continue;
+          }
+
+          // Dígrafos separáveis: rr, ss, sc, sç, xc
+          if (['rr', 'ss', 'sc', 'sç', 'xc'].includes(digraph)) {
+            syllables.push(cur);
+            cur = '';
+            continue;
+          }
+
+          // Coda consonantal (ex: com-po, es-tag, im-pres, trans-bor)
+          if (cur.length >= 2 && this.isConsonant(c) && ['m', 'n', 'r', 's', 'l', 'x', 'z'].includes(c.toLowerCase()) && this.isConsonant(next)) {
+            const blend = (next + (next2 || '')).toLowerCase();
+            if (!/[bcdfgptv][rl]/.test(blend)) {
+              syllables.push(cur);
+              cur = '';
+              continue;
+            }
+          }
+
+          // Regra V-CV: Vogal seguida de consoante única + vogal
+          if (this.isVowel(c) && this.isConsonant(next) && next2 && this.isVowel(next2)) {
+            syllables.push(cur);
+            cur = '';
+            continue;
+          }
+
+          // Regra VC-CV: Consoante + Consoante entre vogais (exceto encontros líquidos)
+          if (this.isConsonant(c) && this.isConsonant(next)) {
+            const blend = (c + next).toLowerCase();
+            const isLiquidBlend = /[bcdfgptv][rl]/.test(blend);
+            if (!isLiquidBlend) {
+              syllables.push(cur);
+              cur = '';
+              continue;
+            }
+          }
+        }
+
+        if (cur.length > 0) {
+          if (syllables.length === 0) {
+            syllables.push(cur);
+          } else {
+            syllables[syllables.length - 1] += cur;
+          }
+        }
+
+        syllables[0] = prefix + syllables[0];
+        syllables[syllables.length - 1] = syllables[syllables.length - 1] + suffix;
+
+        return syllables;
+      },
+
+      getHyphenationPoints(word, config = {}) {
+        const { minWordLength = 5, minBefore = 2, minAfter = 2 } = config;
+        const cleanLetters = word.replace(/[^\wáéíóúâêîôûãõàèìòùç]/gi, '');
+        if (cleanLetters.length < minWordLength) return [];
+
+        const syllables = this.syllabify(word);
+        if (syllables.length <= 1) return [];
+
+        const cuts = [];
+        let accumulated = '';
+
+        for (let i = 0; i < syllables.length - 1; i++) {
+          accumulated += syllables[i];
+          const remainder = syllables.slice(i + 1).join('');
+          const cleanBefore = accumulated.replace(/[^\wáéíóúâêîôûãõàèìòùç]/gi, '');
+          const cleanAfter = remainder.replace(/[^\wáéíóúâêîôûãõàèìòùç]/gi, '');
+
+          if (cleanBefore.length >= minBefore && cleanAfter.length >= minAfter) {
+            cuts.push({
+              head: accumulated + '-',
+              tail: remainder
+            });
+          }
+        }
+
+        return cuts.reverse();
+      }
+    };
+
+    // ========================================================================
+    // MÓDULO 2: FLUXO DE TOKENS (FLOW ENGINE COM HIFENIZAÇÃO PARAMÉTRICA)
+    // ========================================================================
+    const FlowEngine = {
+      fitTokensToSlices(tokens, slices, measureFn, spaceWidth, hyphenOptions = {}) {
+        const lines = [];
+        const tokenQueue = [...tokens];
+        let consecutiveHyphens = 0;
+        let totalHyphens = 0;
+
+        const {
+          enabled: hyphenEnabled = false,
+          minWordLength = 5,
+          minBefore = 2,
+          minAfter = 2,
+          hyphenLimit = 3
+        } = hyphenOptions;
+
+        for (const slice of slices) {
+          for (const seg of slice.segments) {
+            if (tokenQueue.length === 0) break;
+
+            const current = [];
+            let currentWidth = 0;
+            let lineEndedWithHyphen = false;
+
+            while (tokenQueue.length > 0) {
+              const word = tokenQueue[0];
+              const wordW = measureFn(word);
+              const nextW = current.length === 0 ? wordW : currentWidth + spaceWidth + wordW;
+
+              if (nextW <= seg.width) {
+                current.push(tokenQueue.shift());
+                currentWidth = nextW;
+              } else {
+                // Tenta hifenização silábica se permitido e não ultrapassou o limite consecutivo
+                if (hyphenEnabled && consecutiveHyphens < hyphenLimit) {
+                  const availWidth = seg.width - (current.length === 0 ? 0 : currentWidth + spaceWidth);
+                  const cuts = Hyphenator.getHyphenationPoints(word, { minWordLength, minBefore, minAfter });
+
+                  let cutFound = null;
+                  for (const cut of cuts) {
+                    const headW = measureFn(cut.head);
+                    if (headW <= availWidth) {
+                      cutFound = cut;
+                      break;
+                    }
+                  }
+
+                  if (cutFound) {
+                    current.push(cutFound.head);
+                    currentWidth += (current.length === 1 ? 0 : spaceWidth) + measureFn(cutFound.head);
+                    tokenQueue[0] = cutFound.tail;
+                    lineEndedWithHyphen = true;
+                    totalHyphens++;
+                  }
+                }
+                break;
+              }
+            }
+
+            if (lineEndedWithHyphen) {
+              consecutiveHyphens++;
+            } else if (current.length > 0) {
+              consecutiveHyphens = 0;
+            }
+
+            if (current.length > 0) {
+              lines.push({
+                words: current,
+                textWidth: currentWidth,
+                x: seg.x,
+                y: slice.y + slice.height / 2,
+                targetWidth: seg.width
+              });
+            }
+          }
+        }
+
+        return {
+          lines,
+          remainingTokens: tokenQueue,
+          hyphenCount: totalHyphens
+        };
+      }
+    };
+
+    // ========================================================================
+    // MÓDULO 3: ESTRATÉGIAS DE ALINHAMENTO (ALIGNMENT ENGINE)
+    // ========================================================================
+    const AlignmentEngine = {
+      renderLine(ctx, line, strategy, options) {
+        if (strategy === 'justify' && line.words.length > 1) {
+          const normalSpace = ctx.measureText(' ').width;
+          let textW = 0;
+          for (const w of line.words) textW += ctx.measureText(w).width;
+
+          const extraPerSpace = (line.targetWidth - textW) / (line.words.length - 1);
+
+          // Limite paramétrico de tolerância de espaçamento
+          if (extraPerSpace <= normalSpace * options.maxSpacingFactor) {
+            let curX = line.x;
+            for (const w of line.words) {
+              ctx.fillText(w, curX, line.y);
+              curX += ctx.measureText(w).width + extraPerSpace;
+            }
+            return;
+          }
+        }
+
+        // Default: Alinhamento à Esquerda
+        ctx.fillText(line.words.join(' '), line.x, line.y);
+      }
+    };
+
+    // ========================================================================
+    // DADOS E ESTADO DO WORKSPACE
+    // ========================================================================
+    const rawEditorialText = `A história da composição tipográfica é marcada por revoluções tecnológicas profundas. Desde os tipos móveis de chumbo talhados pacientemente por Johannes Gutenberg no século XV, passando pelas máquinas linotipo a vapor do século XIX, até a emergência da fotocomposição e da computação gráfica nos anos 1980 com a Adobe e a linguagem PostScript, cada salto técnico redefiniu a forma como a humanidade consome conhecimento.
+
+No entanto, as últimas décadas testemunharam uma estagnação surpreendente no segmento de editoração eletrônica de mesa. Enquanto o design de interfaces para telas digitais evoluiu para plataformas reativas, abertas e hipercolaborativas, os diagramadores de livros, revistas e catálogos impressos permaneceram enclausurados em ferramentas proprietárias com formatos binários opacos e custos de assinatura exorbitantes.
+
+O desafio da composição contemporânea não reside apenas em exibir letras na tela, mas em respeitar os princípios matemáticos e ópticos da legibilidade. A justificação perfeita de um parágrafo exige a distribuição harmônica dos espaços intervocálicos, evitando o surgimento de rios de branco que distraem a leitura contínua. Ao mesmo tempo, o design expressivo contemporâneo demanda a libertação da rigidez retangular: textos que abraçam silhuetas ilustradas, colunas que se estreitam dinamicamente e caixas de texto que transbordam naturalmente de uma página para a seguinte em uma melodia visual coesa.`;
+
+    const tokenList = rawEditorialText
+      .replace(/^[#\s\uFEFF]+.*/gm, '')
+      .replace(/\n+/g, ' ')
+      .trim()
+      .split(/\s+/);
+
+    const asymmetricPoints = [{"x":40,"y":40},{"x":360,"y":40},{"x":360,"y":200},{"x":240,"y":360},{"x":40,"y":360}];
+    const starPoints = [{"x":150,"y":15},{"x":185,"y":115},{"x":292,"y":115},{"x":206,"y":180},{"x":238,"y":285},{"x":150,"y":225},{"x":62,"y":285},{"x":94,"y":180},{"x":8,"y":115},{"x":115,"y":115}];
+    const erraticPoints = [{"x":140,"y":20},{"x":180,"y":50},{"x":250,"y":30},{"x":220,"y":95},{"x":280,"y":140},{"x":210,"y":170},{"x":260,"y":230},{"x":180,"y":210},{"x":160,"y":280},{"x":120,"y":220},{"x":50,"y":260},{"x":80,"y":190},{"x":20,"y":150},{"x":75,"y":120},{"x":40,"y":60},{"x":110,"y":80}];
+
+    const canvas1 = document.getElementById('canvas1');
+    const ctx1 = canvas1.getContext('2d');
+    const canvas2 = document.getElementById('canvas2');
+    const ctx2 = canvas2.getContext('2d');
+
+    let currentMode = 'negative';
+
+    document.getElementById('btnModePositive').onclick = () => {
+      currentMode = 'positive';
+      document.getElementById('btnModePositive').classList.add('active');
+      document.getElementById('btnModeNegative').classList.remove('active');
+      document.getElementById('controlsPositive').style.display = 'block';
+      document.getElementById('controlsNegative').style.display = 'none';
+      document.getElementById('labelPage1').innerText = 'PÁGINA 1 — MOLDE LIVRE';
+      render();
+    };
+
+    document.getElementById('btnModeNegative').onclick = () => {
+      currentMode = 'negative';
+      document.getElementById('btnModeNegative').classList.add('active');
+      document.getElementById('btnModePositive').classList.remove('active');
+      document.getElementById('controlsPositive').style.display = 'none';
+      document.getElementById('controlsNegative').style.display = 'block';
+      document.getElementById('labelPage1').innerText = 'PÁGINA 1 — WRAP MODULAR';
+      render();
+    };
+
+    function render() {
+      const t0 = performance.now();
+
+      // Leitura de Parâmetros
+      const fontSize = parseInt(document.getElementById('inputFontSize').value, 10);
+      const lineHeight = parseInt(document.getElementById('inputLineHeight').value, 10);
+      const wrapMargin = parseInt(document.getElementById('inputWrapMargin').value, 10);
+      const smoothing = parseInt(document.getElementById('inputSmoothing').value, 10);
+      const minWidth = parseInt(document.getElementById('inputMinSegment').value, 10);
+      const obsX = parseInt(document.getElementById('inputObsX').value, 10);
+      const obsY = parseInt(document.getElementById('inputObsY').value, 10);
+      const wrapMode = document.getElementById('selectWrapMode').value;
+      const obsType = document.getElementById('selectObstacleType').value;
+      const alignStrategy = document.getElementById('selectAlignment').value;
+      const maxSpacingFactor = parseFloat(document.getElementById('inputMaxSpacing').value) / 10;
+
+      const showEnvelope = document.getElementById('checkShowEnvelope').checked;
+      const showScanlines = document.getElementById('checkShowScanlines').checked;
+
+      const hyphenEnabled = document.getElementById('checkHyphenation').checked;
+      const minWordLength = parseInt(document.getElementById('inputMinWordLen').value, 10);
+      const minBefore = parseInt(document.getElementById('inputMinBefore').value, 10);
+      const minAfter = parseInt(document.getElementById('inputMinAfter').value, 10);
+      const hyphenLimit = parseInt(document.getElementById('inputHyphenLimit').value, 10);
+
+      const hyphenOptions = {
+        enabled: hyphenEnabled,
+        minWordLength,
+        minBefore,
+        minAfter,
+        hyphenLimit
+      };
+
+      // Atualização de Rótulos da UI
+      document.getElementById('valFontSize').innerText = fontSize + 'px';
+      document.getElementById('valLineHeight').innerText = lineHeight + 'px';
+      document.getElementById('valWrapMargin').innerText = wrapMargin + 'px';
+      document.getElementById('valSmoothing').innerText = smoothing + ' iterações';
+      document.getElementById('valMinSegment').innerText = minWidth + 'px';
+      document.getElementById('valObsX').innerText = obsX + 'px';
+      document.getElementById('valObsY').innerText = obsY + 'px';
+      document.getElementById('valMaxSpacing').innerText = maxSpacingFactor.toFixed(1) + 'x';
+      document.getElementById('valMinWordLen').innerText = minWordLength + ' letras';
+      document.getElementById('valMinBefore').innerText = minBefore + ' letras';
+      document.getElementById('valMinAfter').innerText = minAfter + ' letras';
+      document.getElementById('valHyphenLimit').innerText = hyphenLimit + ' linhas';
+      document.getElementById('hyphenOptionsBlock').style.display = hyphenEnabled ? 'block' : 'none';
+
+      // Limpar Telas
+      ctx1.clearRect(0, 0, canvas1.width, canvas1.height);
+      ctx2.clearRect(0, 0, canvas2.width, canvas2.height);
+      ctx1.fillStyle = '#ffffff'; ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+      ctx2.fillStyle = '#ffffff'; ctx2.fillRect(0, 0, canvas2.width, canvas2.height);
+
+      // 1. Execução do Módulo Geométrico
+      let page1Container;
+      let obstacles = [];
+      let basePolygon = [];
+
+      if (currentMode === 'positive') {
+        const sel = document.getElementById('shapeSelect').value;
+        if (sel === 'circle') {
+          page1Container = { type: 'circle', cx: 220, cy: 245, radius: 165 };
+        } else if (sel === 'star') {
+          page1Container = {
+            type: 'polygon',
+            points: starPoints.map(p => ({ x: (p.x - 150) * 1.35 + 220, y: (p.y - 150) * 1.35 + 245 }))
+          };
+        } else {
+          // 'asymmetric'
+          page1Container = {
+            type: 'polygon',
+            points: asymmetricPoints.map(p => ({ x: p.x + 20, y: p.y + 45 }))
+          };
+        }
+
+        // Desenha o Molde Geométrico Positivo
+        ctx1.save();
+        if (page1Container.type === 'circle') {
+          if (showEnvelope) {
+            ctx1.fillStyle = 'rgba(2, 132, 199, 0.06)';
+            ctx1.beginPath();
+            ctx1.arc(page1Container.cx, page1Container.cy, page1Container.radius, 0, Math.PI * 2);
+            ctx1.fill();
+          }
+          ctx1.strokeStyle = '#0284c7';
+          ctx1.lineWidth = 2;
+          ctx1.beginPath();
+          ctx1.arc(page1Container.cx, page1Container.cy, page1Container.radius, 0, Math.PI * 2);
+          ctx1.stroke();
+        } else if (page1Container.type === 'polygon') {
+          ctx1.beginPath();
+          ctx1.moveTo(page1Container.points[0].x, page1Container.points[0].y);
+          for (let j = 1; j < page1Container.points.length; j++) {
+            ctx1.lineTo(page1Container.points[j].x, page1Container.points[j].y);
+          }
+          ctx1.closePath();
+          if (showEnvelope) {
+            ctx1.fillStyle = 'rgba(2, 132, 199, 0.06)';
+            ctx1.fill();
+          }
+          ctx1.strokeStyle = '#0284c7';
+          ctx1.lineWidth = 2;
+          ctx1.stroke();
+        }
+        ctx1.restore();
+      } else {
+        // Modo Negativo: container retangular com obstáculos internos
+        page1Container = { type: 'rect', x: 30, y: 40, width: 380, height: 420 };
+        ctx1.strokeStyle = '#cbd5e1'; ctx1.lineWidth = 1;
+        ctx1.strokeRect(page1Container.x, page1Container.y, page1Container.width, page1Container.height);
+
+        if (obsType === 'circle') {
+          obstacles.push({ type: 'circle', cx: obsX, cy: obsY, radius: 60 });
+        } else {
+          basePolygon = erraticPoints.map(p => ({ x: p.x * 0.75 + obsX - 75, y: p.y * 0.75 + obsY - 75 }));
+          obstacles.push({ type: 'polygon', points: basePolygon });
+        }
+      }
+
+      const geomConfig = { lineHeight, wrapMargin, smoothing, minWidth, wrapMode };
+      const { slices, processedObstacles } = GeometryEngine.computeSlices(page1Container, obstacles, geomConfig);
+
+      // Desenhar Representação Visual dos Obstáculos e Envelopes (apenas no modo negativo)
+      if (currentMode === 'negative') {
+        ctx1.save();
+        for (let i = 0; i < obstacles.length; i++) {
+          const orig = obstacles[i];
+          const proc = processedObstacles[i];
+
+          if (orig.type === 'circle') {
+            if (showEnvelope) {
+              ctx1.strokeStyle = '#0284c7'; ctx1.lineWidth = 1.5; ctx1.setLineDash([3, 3]);
+              ctx1.beginPath(); ctx1.arc(orig.cx, orig.cy, orig.radius + wrapMargin, 0, Math.PI * 2); ctx1.stroke();
+            }
+            ctx1.setLineDash([]); ctx1.fillStyle = '#0284c7';
+            ctx1.beginPath(); ctx1.arc(orig.cx, orig.cy, orig.radius, 0, Math.PI * 2); ctx1.fill();
+          } else if (orig.type === 'polygon') {
+            if (showEnvelope && proc && proc.points) {
+              ctx1.strokeStyle = '#0284c7'; ctx1.lineWidth = 1.5; ctx1.setLineDash([3, 3]);
+              ctx1.beginPath();
+              ctx1.moveTo(proc.points[0].x, proc.points[0].y);
+              for (let j = 1; j < proc.points.length; j++) ctx1.lineTo(proc.points[j].x, proc.points[j].y);
+              ctx1.closePath(); ctx1.stroke();
+            }
+
+            ctx1.setLineDash([]); ctx1.fillStyle = '#e11d48';
+            ctx1.beginPath();
+            ctx1.moveTo(orig.points[0].x, orig.points[0].y);
+            for (let j = 1; j < orig.points.length; j++) ctx1.lineTo(orig.points[j].x, orig.points[j].y);
+            ctx1.closePath(); ctx1.fill();
+
+            ctx1.fillStyle = '#ffffff'; ctx1.font = 'bold 10px sans-serif'; ctx1.textAlign = 'center';
+            ctx1.fillText('OBSTÁCULO', obsX, obsY);
+          }
+        }
+        ctx1.restore();
+      }
+
+      // Desenhar Fatias Scanline
+      if (showScanlines) {
+        ctx1.save();
+        ctx1.strokeStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx1.lineWidth = 1;
+        for (const s of slices) {
+          for (const seg of s.segments) {
+            ctx1.strokeRect(seg.x, s.y, seg.width, s.height);
+          }
+        }
+        ctx1.restore();
+      }
+
+      // 2. Execução do Módulo de Fluxo (Flow Engine) na Página 1
+      ctx1.font = fontSize + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx1.fillStyle = '#0f172a';
+      ctx1.textBaseline = 'middle';
+      ctx1.textAlign = 'left';
+
+      const measureFn = (text) => ctx1.measureText(text).width;
+      const spaceWidth = ctx1.measureText(' ').width;
+
+      const page1Result = FlowEngine.fitTokensToSlices(tokenList, slices, measureFn, spaceWidth, hyphenOptions);
+
+      // 3. Renderização com Estratégia de Alinhamento
+      const alignOpts = { maxSpacingFactor };
+      for (const line of page1Result.lines) {
+        AlignmentEngine.renderLine(ctx1, line, alignStrategy, alignOpts);
+      }
+
+      // 4. Execução do Módulo de Fluxo na Página 2 (Transbordo)
+      const page2Container = { x: 35, y: 50, width: 250, height: 400 };
+      ctx2.strokeStyle = '#10b981'; ctx2.lineWidth = 1.5;
+      ctx2.strokeRect(20, 30, 280, 440);
+      ctx2.fillStyle = '#10b981'; ctx2.font = 'bold 11px sans-serif';
+      ctx2.fillText('LINK DE FLUXO ATIVO [PÁGINA 1 -> PÁGINA 2]', 25, 22);
+
+      ctx2.font = fontSize + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx2.fillStyle = '#0f172a';
+      ctx2.textBaseline = 'middle';
+
+      // Gerar fatias retangulares regulares para a página 2
+      const page2Slices = [];
+      for (let y = page2Container.y; y < page2Container.y + page2Container.height; y += lineHeight) {
+        page2Slices.push({ y, height: lineHeight, segments: [{ x: page2Container.x, width: page2Container.width }] });
+      }
+
+      const page2Result = FlowEngine.fitTokensToSlices(page1Result.remainingTokens, page2Slices, measureFn, spaceWidth, hyphenOptions);
+
+      for (const line of page2Result.lines) {
+        AlignmentEngine.renderLine(ctx2, line, 'left', alignOpts);
+      }
+
+      const t1 = performance.now();
+      const deltaMs = (t1 - t0).toFixed(2);
+
+      let wordsPage1 = 0;
+      page1Result.lines.forEach(l => wordsPage1 += l.words.length);
+      let wordsPage2 = 0;
+      page2Result.lines.forEach(l => wordsPage2 += l.words.length);
+
+      document.getElementById('metricsBox').innerHTML = `
+        <div>⚡ Tempo Total de Execução: <strong>${deltaMs} ms</strong></div>
+        <div>📐 Fatias Geradas: <strong>${slices.length}</strong></div>
+        <div>📝 Palavras Acomodadas (Pág. 1): <strong>${wordsPage1}</strong></div>
+        <div>🌊 Palavras Transbordadas (Pág. 2): <strong>${wordsPage2}</strong></div>
+        <div>✂️ Hífens Aplicados: <strong>${page1Result.hyphenCount + page2Result.hyphenCount}</strong></div>
+        <div>🧩 Pipeline: <strong>Modular & Desacoplado</strong></div>
+      `;
+    }
+
+    [
+      document.getElementById('shapeSelect'),
+      document.getElementById('selectObstacleType'),
+      document.getElementById('selectWrapMode'),
+      document.getElementById('selectAlignment'),
+      document.getElementById('inputMaxSpacing'),
+      document.getElementById('inputMinSegment'),
+      document.getElementById('inputObsX'),
+      document.getElementById('inputObsY'),
+      document.getElementById('inputWrapMargin'),
+      document.getElementById('inputSmoothing'),
+      document.getElementById('inputFontSize'),
+      document.getElementById('inputLineHeight'),
+      document.getElementById('checkHyphenation'),
+      document.getElementById('inputMinWordLen'),
+      document.getElementById('checkShowScanlines'),
+      document.getElementById('checkShowEnvelope'),
+      document.getElementById('inputMinBefore'),
+      document.getElementById('inputMinAfter'),
+      document.getElementById('inputHyphenLimit')
+    ].forEach(el => {
+      if (el) {
+        el.addEventListener('input', render);
+        el.addEventListener('change', render);
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

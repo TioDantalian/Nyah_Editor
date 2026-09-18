@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300">
+  <!-- Forma Altamente Errática com reentrâncias e pontas assimétricas -->
+  <polygon points="
+    140,20 180,50 250,30 220,95 280,140 210,170 260,230 180,210 
+    160,280 120,220 50,260 80,190 20,150 75,120 40,60 110,80
+  " fill="#ef4444" stroke="#b91c1c" stroke-width="2"/>
+</svg>

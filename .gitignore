@@ -1,0 +1,16 @@
+﻿# Ambientes de depuração e rascunhos temporários
+scratch/
+*.log
+.system_generated/
+
+# Dependências
+node_modules/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/

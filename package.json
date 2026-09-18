@@ -1,0 +1,20 @@
+{
+  "name": "open-dtp",
+  "version": "0.1.0",
+  "description": "Estudo, arquitetura e protótipos para um software moderno e aberto de DTP.",
+  "private": true,
+  "scripts": {
+    "spike:1": "node spikes/spike-01-freeform-text-slicer/run.js",
+    "spike:2": "node spikes/spike-02-canvas-reactivity/run.js",
+    "spike:3": "node spikes/spike-03-viewport-stress/run.js",
+    "spike:4": "node spikes/spike-04-pdf-precision/run.js",
+    "test": "node test/engine.test.js",
+    "test:tools": "node test/interactive_tools.test.js",
+    "test:all": "node test/engine.test.js && node test/interactive_tools.test.js",
+    "studio": "node src/server.js --open",
+    "studio:file": "powershell -Command \"Start-Process (Resolve-Path 'src/ui/app.html').Path\""
+  },
+  "keywords": ["dtp", "indesign", "typography", "canvas", "paged-media", "open-source"],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,9 @@
+﻿# A Renascença da Tipografia Digital e o Design Editorial Aberto
+
+A história da composição tipográfica é marcada por revoluções tecnológicas profundas. Desde os tipos móveis de chumbo talhados pacientemente por Johannes Gutenberg no século XV, passando pelas máquinas linotipo a vapor do século XIX, até a emergência da fotocomposição e da computação gráfica nos anos 1980 com a Adobe e a linguagem PostScript, cada salto técnico redefiniu a forma como a humanidade consome conhecimento.
+
+No entanto, as últimas décadas testemunharam uma estagnação surpreendente no segmento de editoração eletrônica de mesa. Enquanto o design de interfaces para telas digitais evoluiu para plataformas reativas, abertas e hipercolaborativas, os diagramadores de livros, revistas e catálogos impressos permaneceram enclausurados em ferramentas proprietárias com formatos binários opacos e custos de assinatura exorbitantes.
+
+O desafio da composição contemporânea não reside apenas em exibir letras na tela, mas em respeitar os princípios matemáticos e ópticos da legibilidade. A justificação perfeita de um parágrafo exige a distribuição harmônica dos espaços intervocálicos, evitando o surgimento de "rios de branco" que distraem a leitura contínua. Ao mesmo tempo, o design expressivo contemporâneo demanda a libertação da rigidez retangular: textos que abraçam silhuetas ilustradas, colunas que se estreitam dinamicamente e caixas de texto que transbordam naturalmente de uma página para a seguinte em uma melodia visual coesa.
+
+Ao construir uma nova fundação aberta e moderna, recuperamos a autonomia criativa. Unindo a precisão microscópica dos motores tipográficos baseados em regras estéticas com a velocidade dos motores gráficos acelerados por GPU, abrimos as portas para uma nova geração de editoras independentes, designers experimentais e publicações de código aberto capazes de dialogar em pé de igualdade com a melhor tradição da imprensa mundial.

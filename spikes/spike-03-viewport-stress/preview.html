@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenDTP — Spike 03: Teste de Carga de 100 Páginas & Viewport Culling</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #090d16;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+      user-select: none;
+    }
+
+    #viewport {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: default;
+    }
+    #viewport.panning { cursor: grab; }
+    #viewport.is-panning { cursor: grabbing; }
+
+    /* Top Bar */
+    header {
+      position: absolute;
+      top: 14px;
+      left: 18px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 10px 18px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+    h1 { font-size: 15px; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      background: #0284c7;
+      color: #ffffff;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    /* Floating Toolbar (Right Side) */
+    .toolbox {
+      position: absolute;
+      top: 14px;
+      right: 18px;
+      z-index: 10;
+      width: 320px;
+      background: rgba(30, 41, 59, 0.90);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    }
+    .toolbox h2 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 5px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .control-group label {
+      font-size: 11px;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+    }
+    select {
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      outline: none;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #cbd5e1;
+      cursor: pointer;
+    }
+
+    /* Performance HUD (Bottom Left) */
+    .hud-panel {
+      position: absolute;
+      bottom: 18px;
+      left: 18px;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-family: monospace;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 300px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    }
+    .hud-title {
+      font-size: 10px;
+      font-weight: bold;
+      color: #38bdf8;
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 4px;
+    }
+    .hud-row {
+      display: flex;
+      justify-content: space-between;
+      color: #94a3b8;
+    }
+    .hud-row strong { color: #f8fafc; }
+    .fps-badge {
+      background: #10b981;
+      color: #ffffff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .budget-bar-container {
+      margin-top: 4px;
+      background: #334155;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+    }
+    .bar-cull { background: #10b981; height: 100%; }
+    .bar-render { background: #38bdf8; height: 100%; }
+
+    /* Zoom & Navigation Controls */
+    .nav-dock {
+      position: absolute;
+      bottom: 18px;
+      right: 18px;
+      z-index: 10;
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-btn {
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #f8fafc;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .nav-btn:hover { background: #1e293b; border-color: #38bdf8; }
+    .zoom-label { font-size: 11px; font-weight: bold; color: #38bdf8; width: 44px; text-align: center; }
+
+    /* Keymap Hint */
+    .hint-bar {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9;
+      background: rgba(15, 23, 42, 0.7);
+      padding: 5px 14px;
+      border-radius: 9999px;
+      font-size: 11px;
+      color: #64748b;
+      pointer-events: none;
+    }
+    .hint-bar kbd {
+      background: #334155;
+      color: #f8fafc;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>⚡ OpenDTP <span>Spike 03: Teste de Carga (100 Páginas)</span></h1>
+    <span class="badge">VIEWPORT CULLING & GREEKING</span>
+  </header>
+
+  <div class="toolbox">
+    <h2>1. Otimização Espacial</h2>
+    <label class="toggle-row">
+      <input type="checkbox" id="checkCulling" checked>
+      <strong>Ativar Viewport Culling</strong>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="checkGreeking" checked>
+      Ativar Greeking em Zoom Baixo (&lt; 25%)
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" id="checkMargins" checked>
+      Mostrar Guias de Margem (Lombada/Corte)
+    </label>
+
+    <h2>2. Salto Rápido de Página</h2>
+    <div class="control-group">
+      <label>Ir para o Spread:</label>
+      <select id="selectPageJump">
+        <option value="0">Spread 1 (Págs. 1 e 2) - Início</option>
+        <option value="12">Spread 13 (Págs. 25 e 26)</option>
+        <option value="24">Spread 25 (Págs. 49 e 50) - Meio</option>
+        <option value="37">Spread 38 (Págs. 75 e 76)</option>
+        <option value="49">Spread 50 (Págs. 99 e 100) - Fim</option>
+      </select>
+    </div>
+
+    <h2>3. Informações do Documento</h2>
+    <div style="font-size: 11px; color: #94a3b8; display: flex; flex-direction: column; gap: 4px;">
+      <div>📖 Páginas: <strong>100 páginas (50 spreads)</strong></div>
+      <div>📝 Caixas de Texto: <strong>100 caixas de texto</strong></div>
+      <div>🖼️ Imagens: <strong>50 ilustrações</strong></div>
+      <div>📐 Resolução Total: <strong>780 x 30.000 px</strong></div>
+    </div>
+  </div>
+
+  <div class="hud-panel">
+    <div class="hud-title">
+      <span>TELEMETRIA DE CARGA (60 FPS)</span>
+      <span class="fps-badge" id="hudFps">60 FPS</span>
+    </div>
+    <div class="hud-row"><span>Páginas Visíveis na Tela:</span><strong id="hudVisiblePages" style="color: #38bdf8;">4</strong></div>
+    <div class="hud-row"><span>Páginas Descartadas (Cull):</span><strong id="hudCulledPages" style="color: #10b981;">96</strong></div>
+    <div class="hud-row"><span>Eficiência do Descarte:</span><strong id="hudEfficiency">96.0%</strong></div>
+    <div class="hud-row"><span>Tempo do Frame:</span><strong id="hudFrameTime">0.00 ms</strong></div>
+    <div class="budget-bar-container" title="Distribuição do Orçamento de 16.6ms">
+      <div class="bar-cull" id="barCull" style="width: 2%;"></div>
+      <div class="bar-render" id="barRender" style="width: 5%;"></div>
+    </div>
+  </div>
+
+  <div class="nav-dock">
+    <button class="nav-btn" id="btnZoomOut">−</button>
+    <span class="zoom-label" id="lblZoom">75%</span>
+    <button class="nav-btn" id="btnZoomIn">+</button>
+    <button class="nav-btn" id="btnZoom100">100%</button>
+    <button class="nav-btn" id="btnZoomSpread">Enquadrar Spread</button>
+    <button class="nav-btn" id="btnZoomAll">Ver 100 Páginas</button>
+  </div>
+
+  <div class="hint-bar">
+    <kbd>Espaço</kbd> + Arraste para Pan &bull; <kbd>Roda do Mouse</kbd> para Zoom (5% a 500%) &bull; Desative o Culling para comparar FPS
+  </div>
+
+  <canvas id="viewport"></canvas>
+
+  <script>
+    // ========================================================================
+    // MÓDULO ESPACIAL (SPATIAL ENGINE)
+    // ========================================================================
+    const SpatialEngine = {
+      getViewportAABB(screenWidth, screenHeight, panX, panY, zoom, margin = 50) {
+        return {
+          minX: (-panX - margin) / zoom,
+          minY: (-panY - margin) / zoom,
+          maxX: (screenWidth - panX + margin) / zoom,
+          maxY: (screenHeight - panY + margin) / zoom
+        };
+      },
+
+      intersectsAABB(boxA, boxB) {
+        return !(
+          boxA.maxX < boxB.minX ||
+          boxA.minX > boxB.maxX ||
+          boxA.maxY < boxB.minY ||
+          boxA.minY > boxB.maxY
+        );
+      },
+
+      cullEntities(entities, viewportAABB) {
+        const visible = [];
+        let culledCount = 0;
+        for (let i = 0; i < entities.length; i++) {
+          const e = entities[i];
+          const entityAABB = {
+            minX: e.x,
+            minY: e.y,
+            maxX: e.x + e.width,
+            maxY: e.y + e.height
+          };
+          if (this.intersectsAABB(entityAABB, viewportAABB)) {
+            visible.push(e);
+          } else {
+            culledCount++;
+          }
+        }
+        return { visible, culledCount, total: entities.length };
+      },
+
+      shouldGreek(fontSize, zoom, thresholdPx = 4.5) {
+        return (fontSize * zoom) < thresholdPx;
+      }
+    };
+
+    // ========================================================================
+    // GERAÇÃO DO LIVRO DE 100 PÁGINAS (50 SPREADS)
+    // ========================================================================
+    const SPREADS = 50;
+    const PAGE_WIDTH = 380;
+    const PAGE_HEIGHT = 540;
+    const GUTTER_X = 20;
+    const GUTTER_Y = 70;
+
+    // Margens Editoriais Paramétricas (Padrão de páginas espelhadas / facing-pages)
+    const PAGE_MARGINS = {
+      top: 45,       // Margem Superior (Cabeçalho)
+      bottom: 40,    // Margem Inferior (Rodapé/Numeração)
+      inside: 30,    // Margem Interna (Lombada / Dobra central - maior para encadernação)
+      outside: 20    // Margem Externa (Corte)
+    };
+
+    function getPageContentBox(page, margins) {
+      const isLeft = page.side === 'left';
+      const marginLeft = isLeft ? margins.outside : margins.inside;
+      const marginRight = isLeft ? margins.inside : margins.outside;
+      return {
+        x: page.x + marginLeft,
+        y: page.y + margins.top,
+        width: page.width - marginLeft - marginRight,
+        height: page.height - margins.top - margins.bottom
+      };
+    }
+
+    const pages = [];
+    const textBlocks = [];
+    const imageBlocks = [];
+
+    const sampleTextLines = [
+      "A história da composição tipográfica é marcada por revoluções profundas.",
+      "Desde os tipos móveis de chumbo talhados por Johannes Gutenberg no século XV,",
+      "passando pelas máquinas linotipo a vapor, até a fotocomposição dos anos 1980.",
+      "O desafio contemporâneo demanda a libertação da rigidez retangular.",
+      "Textos que abraçam silhuetas ilustradas e transbordam naturalmente.",
+      "A justificação perfeita exige a distribuição harmônica dos espaços intervocálicos,",
+      "evitando rios de branco que distraem a leitura contínua e a concentração.",
+      "Unindo a precisão microscópica dos motores tipográficos baseados em regras",
+      "com a velocidade dos motores gráficos acelerados por GPU moderna."
+    ];
+
+    for (let s = 0; s < SPREADS; s++) {
+      const spreadY = s * (PAGE_HEIGHT + GUTTER_Y);
+
+      // Página Esquerda (Ímpar / Verso)
+      const p1X = 100;
+      const p1Y = spreadY;
+      const page1Id = s * 2 + 1;
+      const page1 = {
+        id: page1Id, spreadIndex: s, side: 'left',
+        x: p1X, y: p1Y, width: PAGE_WIDTH, height: PAGE_HEIGHT,
+        header: `Capítulo ${(Math.floor(s / 5) + 1)} — Fundamentos DTP`,
+        pageNumber: page1Id
+      };
+      pages.push(page1);
+
+      const box1 = getPageContentBox(page1, PAGE_MARGINS);
+      textBlocks.push({
+        pageId: page1Id,
+        x: box1.x, y: box1.y, width: box1.width, height: box1.height,
+        lines: sampleTextLines
+      });
+
+      // Página Direita (Par / Recto)
+      const p2X = 100 + PAGE_WIDTH + GUTTER_X;
+      const p2Y = spreadY;
+      const page2Id = s * 2 + 2;
+      const page2 = {
+        id: page2Id, spreadIndex: s, side: 'right',
+        x: p2X, y: p2Y, width: PAGE_WIDTH, height: PAGE_HEIGHT,
+        header: `OpenDTP Architecture Manual`,
+        pageNumber: page2Id
+      };
+      pages.push(page2);
+
+      const box2 = getPageContentBox(page2, PAGE_MARGINS);
+      const imageHeight = 120;
+      const imageSpacing = 15;
+      const textHeight = box2.height - imageHeight - imageSpacing;
+
+      textBlocks.push({
+        pageId: page2Id,
+        x: box2.x, y: box2.y, width: box2.width, height: textHeight,
+        lines: sampleTextLines.slice(0, 5)
+      });
+
+      imageBlocks.push({
+        pageId: page2Id,
+        x: box2.x, y: box2.y + textHeight + imageSpacing, width: box2.width, height: imageHeight,
+        caption: `Figura ${s + 1}: Diagrama Estrutural da Prancheta`
+      });
+    }
+
+    // ========================================================================
+    // ESTADO DO CANVAS E VIEWPORT
+    // ========================================================================
+    const canvas = document.getElementById('viewport');
+    const ctx = canvas.getContext('2d');
+
+    let zoom = 0.75;
+    let panX = 120;
+    let panY = 60;
+
+    let frameCount = 0;
+    let fps = 60;
+    let lastFpsTime = performance.now();
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      scheduleRender();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    let renderRequested = false;
+    function scheduleRender() {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(renderFrame);
+      }
+    }
+
+    // ========================================================================
+    // LAÇO DE RENDERIZAÇÃO
+    // ========================================================================
+    function renderFrame() {
+      renderRequested = false;
+      const tStart = performance.now();
+
+      const cullingEnabled = document.getElementById('checkCulling').checked;
+      const greekingEnabled = document.getElementById('checkGreeking').checked;
+
+      // 1. FASE ESPACIAL: CULLING
+      const tCull0 = performance.now();
+      const viewportAABB = SpatialEngine.getViewportAABB(canvas.width, canvas.height, panX, panY, zoom, 80);
+
+      let visiblePages = pages;
+      let culledPagesCount = 0;
+
+      if (cullingEnabled) {
+        const cullResult = SpatialEngine.cullEntities(pages, viewportAABB);
+        visiblePages = cullResult.visible;
+        culledPagesCount = cullResult.culledCount;
+      }
+      const tCull1 = performance.now();
+
+      // 2. FASE GRÁFICA: DESENHO
+      const tRender0 = performance.now();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawGrid();
+
+      ctx.save();
+      ctx.translate(panX, panY);
+      ctx.scale(zoom, zoom);
+
+      const visiblePageIds = new Set(visiblePages.map(p => p.id));
+      const shouldGreek = greekingEnabled && SpatialEngine.shouldGreek(13, zoom, 3.8);
+
+      // Renderiza as páginas visíveis
+      for (const page of visiblePages) {
+        drawPage(page, shouldGreek);
+      }
+
+      ctx.restore();
+      const tRender1 = performance.now();
+
+      const tEnd = performance.now();
+      const totalFrameTime = tEnd - tStart;
+      const cullTime = tCull1 - tCull0;
+      const renderTime = tRender1 - tRender0;
+
+      // Telemetria
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 400) {
+        fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        frameCount = 0;
+        lastFpsTime = now;
+        document.getElementById('hudFps').innerText = fps + ' FPS';
+        document.getElementById('hudFps').style.background = fps >= 55 ? '#10b981' : (fps >= 30 ? '#f59e0b' : '#ef4444');
+      }
+
+      document.getElementById('hudVisiblePages').innerText = visiblePages.length;
+      document.getElementById('hudCulledPages').innerText = culledPagesCount;
+      document.getElementById('hudEfficiency').innerText = ((culledPagesCount / pages.length) * 100).toFixed(1) + '%';
+      document.getElementById('hudFrameTime').innerText = totalFrameTime.toFixed(2) + ' ms';
+
+      const maxBudget = 16.667;
+      document.getElementById('barCull').style.width = Math.min(100, (cullTime / maxBudget) * 100) + '%';
+      document.getElementById('barRender').style.width = Math.min(100, (renderTime / maxBudget) * 100) + '%';
+    }
+
+    function drawGrid() {
+      const gridSize = 40 * zoom;
+      const offsetX = panX % gridSize;
+      const offsetY = panY % gridSize;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = offsetX; x < canvas.width; x += gridSize) {
+        ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+      }
+      for (let y = offsetY; y < canvas.height; y += gridSize) {
+        ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPage(page, isGreeked) {
+      ctx.save();
+
+      // Folha de Papel
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 6;
+      ctx.fillRect(page.x, page.y, page.width, page.height);
+      ctx.shadowColor = 'transparent';
+
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(page.x, page.y, page.width, page.height);
+
+      // Linhas Guias de Margem Editorial (Mancha Gráfica InDesign)
+      const showMargins = document.getElementById('checkMargins').checked;
+      if (showMargins) {
+        const box = getPageContentBox(page, PAGE_MARGINS);
+        ctx.strokeStyle = 'rgba(217, 70, 239, 0.45)'; // Magenta DTP clássico
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.strokeRect(box.x, box.y, box.width, box.height);
+        ctx.setLineDash([]);
+      }
+
+      // Cabeçalho da página
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = page.side === 'left' ? 'left' : 'right';
+      const headerX = page.side === 'left' ? page.x + 25 : page.x + page.width - 25;
+      ctx.fillText(page.header, headerX, page.y + 24);
+
+      // Número da página no rodapé
+      ctx.textAlign = 'center';
+      ctx.fillText(`— ${page.pageNumber} —`, page.x + page.width / 2, page.y + page.height - 18);
+
+      // Conteúdo: Texto
+      const tf = textBlocks.find(t => t.pageId === page.id);
+      if (tf) {
+        if (isGreeked) {
+          // GREEKING: Barras cinzas ultrarrápidas substituem letras ilegíveis no zoom afastado
+          ctx.fillStyle = '#cbd5e1';
+          for (let i = 0; i < tf.lines.length; i++) {
+            const lineY = tf.y + i * 18;
+            const lineW = (i % 3 === 2) ? tf.width * 0.7 : tf.width;
+            ctx.fillRect(tf.x, lineY, lineW, 6);
+          }
+        } else {
+          // RENDERIZAÇÃO REAL: Glifos tipográficos nítidos
+          ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          ctx.fillStyle = '#0f172a';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          for (let i = 0; i < tf.lines.length; i++) {
+            ctx.fillText(tf.lines[i], tf.x, tf.y + i * 20);
+          }
+        }
+      }
+
+      // Conteúdo: Imagem (se houver)
+      const img = imageBlocks.find(m => m.pageId === page.id);
+      if (img) {
+        ctx.fillStyle = '#0284c7';
+        ctx.fillRect(img.x, img.y, img.width, img.height);
+
+        // Ícone / Padrão de placeholder
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(img.x + 10, img.y + 10, img.width - 20, img.height - 20);
+
+        if (!isGreeked) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('ILUSTRAÇÃO EDITORIAL', img.x + img.width / 2, img.y + img.height / 2);
+          ctx.font = '9px sans-serif';
+          ctx.fillStyle = '#64748b';
+          ctx.fillText(img.caption, img.x + img.width / 2, img.y + img.height + 14);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    // ========================================================================
+    // INTERAÇÃO E NAVEGAÇÃO
+    // ========================================================================
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    let isSpaceDown = false;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !isSpaceDown) {
+        isSpaceDown = true;
+        canvas.classList.add('panning');
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'Space') {
+        isSpaceDown = false;
+        canvas.classList.remove('panning');
+      }
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      const newZoom = Math.min(5.0, Math.max(0.04, zoom * zoomFactor));
+
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      panX = mouseX - (mouseX - panX) * (newZoom / zoom);
+      panY = mouseY - (mouseY - panY) * (newZoom / zoom);
+      zoom = newZoom;
+
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (isSpaceDown || e.button === 1) {
+        isPanning = true;
+        panStart = { x: e.clientX - panX, y: e.clientY - panY };
+        canvas.classList.add('is-panning');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        panX = e.clientX - panStart.x;
+        panY = e.clientY - panStart.y;
+        scheduleRender();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      canvas.classList.remove('is-panning');
+    });
+
+    // Salto Rápido de Spread
+    document.getElementById('selectPageJump').onchange = (e) => {
+      const sIdx = parseInt(e.target.value, 10);
+      const targetSpreadY = sIdx * (PAGE_HEIGHT + GUTTER_Y);
+      zoom = 0.85;
+      panX = (canvas.width - (PAGE_WIDTH * 2 + GUTTER_X) * zoom) / 2 - 100 * zoom;
+      panY = 100 - targetSpreadY * zoom;
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    };
+
+    // Botões de Enquadramento
+    document.getElementById('btnZoomIn').onclick = () => {
+      zoom = Math.min(5.0, zoom * 1.25);
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    };
+    document.getElementById('btnZoomOut').onclick = () => {
+      zoom = Math.max(0.04, zoom / 1.25);
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    };
+    document.getElementById('btnZoom100').onclick = () => {
+      zoom = 1.0;
+      document.getElementById('lblZoom').innerText = '100%';
+      scheduleRender();
+    };
+    document.getElementById('btnZoomSpread').onclick = () => {
+      const spreadW = PAGE_WIDTH * 2 + GUTTER_X;
+      const spreadH = PAGE_HEIGHT;
+      const padding = 60;
+      zoom = Math.min((canvas.width - padding * 2) / spreadW, (canvas.height - padding * 2) / spreadH);
+      panX = (canvas.width - spreadW * zoom) / 2 - 100 * zoom;
+      panY = (canvas.height - spreadH * zoom) / 2;
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    };
+    document.getElementById('btnZoomAll').onclick = () => {
+      // Enquadra todas as 100 páginas (30.000 px de altura)
+      const totalW = PAGE_WIDTH * 2 + GUTTER_X + 200;
+      const totalH = SPREADS * (PAGE_HEIGHT + GUTTER_Y);
+      zoom = Math.min((canvas.width - 40) / totalW, (canvas.height - 40) / totalH);
+      panX = (canvas.width - totalW * zoom) / 2;
+      panY = 20;
+      document.getElementById('lblZoom').innerText = Math.round(zoom * 100) + '%';
+      scheduleRender();
+    };
+
+    // Listeners dos checkboxes
+    document.getElementById('checkCulling').onchange = scheduleRender;
+    document.getElementById('checkGreeking').onchange = scheduleRender;
+    document.getElementById('checkMargins').onchange = scheduleRender;
+
+    // Inicialização
+    resizeCanvas();
+    scheduleRender();
+  </script>
+</body>
+</html>
