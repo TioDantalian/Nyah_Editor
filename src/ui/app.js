@@ -45,6 +45,14 @@ window.addEventListener('DOMContentLoaded', () => {
   // 3. Primeira Spread (Página 1 à Direita / Recto)
   const spread = doc.addSpread();
 
+  // Matéria do Título Principal (permite edição direta)
+  const titleStory = new Story({
+    id: 'story-title',
+    title: 'Título Principal'
+  });
+  titleStory.addParagraph('A Nova Era da Tipografia Aberta', 'pstyle-h1');
+  doc.addStory(titleStory);
+
   // Caixas de Exemplo Iniciais
   const frameTitle = new TextFrame({
     id: 'frame-title',
@@ -52,7 +60,8 @@ window.addEventListener('DOMContentLoaded', () => {
     xMm: 235,
     yMm: 30,
     widthMm: 160,
-    heightMm: 24
+    heightMm: 24,
+    storyId: titleStory.id
   });
   spread.addFrame(frameTitle);
 
@@ -121,7 +130,10 @@ window.addEventListener('DOMContentLoaded', () => {
       'middle-left'
     ],
     rotateEnabled: true,
-    anchorSize: 9,
+    keepRatio: false,
+    shiftBehavior: 'default',
+    ignoreStroke: true,
+    anchorSize: 8,
     anchorCornerRadius: 0,
     anchorFill: '#ffffff',
     anchorStroke: '#0284c7',
@@ -129,8 +141,8 @@ window.addEventListener('DOMContentLoaded', () => {
     borderStroke: '#0284c7',
     borderStrokeWidth: 1.5,
     boundBoxFunc: (oldBox, newBox) => {
-      // Mínimo dimensional inviolável (15px ~ 4mm)
-      if (newBox.width < 15 || newBox.height < 15) {
+      // Mínimo dimensional inviolável (15px ~ 4mm) evitando congelamento
+      if (Math.abs(newBox.width) < 15 || Math.abs(newBox.height) < 15) {
         return oldBox;
       }
       return newBox;
@@ -155,6 +167,8 @@ window.addEventListener('DOMContentLoaded', () => {
   let isSpaceDown = false;
   let lastPointerPos = null;
   let currentRulerUnit = 'cm'; // 'cm' | 'mm'
+  let activeTextEditor = null;
+  let rulerAnimFrame = null;
 
   // ==========================================================================
   // RENDERIZADOR DE PÁGINAS E SPREADS
@@ -246,6 +260,192 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================================================
+  // OTIMIZADORES DE RENDERIZAÇÃO E ATUALIZAÇÃO RÁPIDA
+  // ==========================================================================
+  function scheduleRulerUpdate() {
+    if (!rulerAnimFrame) {
+      rulerAnimFrame = requestAnimationFrame(() => {
+        rulerAnimFrame = null;
+        updateRulers();
+      });
+    }
+  }
+
+  function updateInspectorValues() {
+    if (!selectedFrame) return;
+    const activePage = spread.pages[0];
+    const originXMm = activePage ? activePage.offsetX : 0;
+    const originYMm = activePage ? activePage.offsetY : 0;
+    const unitFactor = (currentRulerUnit === 'cm') ? 0.1 : 1.0;
+
+    const valX = ((selectedFrame.xMm - originXMm) * unitFactor).toFixed(1);
+    const valY = ((selectedFrame.yMm - originYMm) * unitFactor).toFixed(1);
+    const valW = (selectedFrame.widthMm * unitFactor).toFixed(1);
+    const valH = (selectedFrame.heightMm * unitFactor).toFixed(1);
+
+    const inpX = document.getElementById('inpX');
+    const inpY = document.getElementById('inpY');
+    const inpW = document.getElementById('inpW');
+    const inpH = document.getElementById('inpH');
+
+    if (inpX && document.activeElement !== inpX) inpX.value = valX;
+    if (inpY && document.activeElement !== inpY) inpY.value = valY;
+    if (inpW && document.activeElement !== inpW) inpW.value = valW;
+    if (inpH && document.activeElement !== inpH) inpH.value = valH;
+
+    const lblStatus = document.getElementById('lblTextOverflowStatus');
+    if (lblStatus && selectedFrame.type === 'text') {
+      lblStatus.style.color = selectedFrame.hasOverflow ? '#ef4444' : '#4ade80';
+      lblStatus.innerText = selectedFrame.hasOverflow ? 'Transbordo (+)' : 'Encaixe Perfeito';
+    }
+
+    const lblLines = document.getElementById('lblTextLinesCount');
+    if (lblLines && selectedFrame.type === 'text') {
+      lblLines.innerText = selectedFrame.computedLines?.length || 0;
+    }
+  }
+
+  // ==========================================================================
+  // SISTEMA DE EDIÇÃO DE TEXTO INLINE (CANVAS)
+  // ==========================================================================
+  function stopInlineTextEdit(commit = true) {
+    if (!activeTextEditor) return;
+    const { textarea, frame, node, initialText } = activeTextEditor;
+    const newText = textarea.value;
+
+    if (commit && newText !== initialText) {
+      updateFrameText(frame, newText);
+    }
+
+    textarea.remove();
+    activeTextEditor = null;
+    if (node) {
+      renderFrameContents(node, frame);
+      contentLayer.batchDraw();
+    }
+    updateUI();
+  }
+
+  function updateFrameText(frame, text) {
+    let storyObj = null;
+    if (frame.storyId && doc.stories.has(frame.storyId)) {
+      storyObj = doc.stories.get(frame.storyId);
+    } else {
+      const storyId = `story-${frame.id}`;
+      storyObj = new Story({
+        id: storyId,
+        title: frame.name || 'Texto',
+        paragraphs: [{ text: text, paragraphStyleId: 'pstyle-body' }]
+      });
+      doc.addStory(storyObj);
+      frame.storyId = storyId;
+    }
+
+    const isTitle = frame.id === 'frame-title' || frame.name?.includes('Título');
+    const styleId = isTitle ? 'pstyle-h1' : 'pstyle-body';
+
+    const paras = text.split('\n\n').map(t => t.trim()).filter(t => t.length > 0);
+    storyObj.paragraphs = paras.length > 0
+      ? paras.map(p => ({ text: p, paragraphStyleId: styleId }))
+      : [{ text: '', paragraphStyleId: styleId }];
+
+    engine.computeFlow();
+
+    // Re-renderizar todos os quadros vinculados a esta story
+    for (const f of spread.frames) {
+      if (f.storyId === frame.storyId) {
+        const n = nodeMap.get(f.id);
+        if (n) renderFrameContents(n, f);
+      }
+    }
+    contentLayer.batchDraw();
+
+    const inpStory = document.getElementById('inpStoryText');
+    if (inpStory && document.activeElement !== inpStory) {
+      inpStory.value = text;
+    }
+    updateInspectorValues();
+  }
+
+  function startInlineTextEdit(frame, group) {
+    if (activeTextEditor) {
+      stopInlineTextEdit(true);
+    }
+
+    let currentText = '';
+    if (frame.storyId && doc.stories.has(frame.storyId)) {
+      currentText = doc.stories.get(frame.storyId).getFullText();
+    } else if (frame.id === 'frame-title') {
+      currentText = 'A Nova Era da Tipografia Aberta';
+    }
+
+    const screenLeft = stage.x() + mmToPx(frame.xMm) * stage.scaleX();
+    const screenTop = stage.y() + mmToPx(frame.yMm) * stage.scaleY();
+    const screenWidth = Math.max(60, mmToPx(frame.widthMm) * stage.scaleX());
+    const screenHeight = Math.max(30, mmToPx(frame.heightMm) * stage.scaleY());
+
+    const textarea = document.createElement('textarea');
+    textarea.id = 'inline-text-editor';
+    textarea.value = currentText;
+
+    const isTitle = frame.id === 'frame-title' || frame.name?.includes('Título');
+    const baseFontSize = isTitle ? 18 : 12;
+
+    Object.assign(textarea.style, {
+      position: 'absolute',
+      left: `${screenLeft}px`,
+      top: `${screenTop}px`,
+      width: `${screenWidth}px`,
+      height: `${screenHeight}px`,
+      fontSize: `${Math.max(11, baseFontSize * stage.scaleX())}px`,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontWeight: isTitle ? 'bold' : 'normal',
+      lineHeight: '1.4',
+      color: '#0f172a',
+      background: 'rgba(255, 255, 255, 0.98)',
+      border: '2px solid #0284c7',
+      borderRadius: '3px',
+      outline: 'none',
+      padding: '4px 6px',
+      boxSizing: 'border-box',
+      zIndex: '100',
+      resize: 'none',
+      overflowY: 'auto',
+      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)'
+    });
+
+    container.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    activeTextEditor = {
+      textarea,
+      frame,
+      node: group,
+      initialText: currentText
+    };
+
+    textarea.addEventListener('input', () => {
+      updateFrameText(frame, textarea.value);
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stopInlineTextEdit(false);
+      }
+    });
+
+    textarea.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (activeTextEditor && activeTextEditor.textarea === textarea) {
+          stopInlineTextEdit(true);
+        }
+      }, 150);
+    });
+  }
+
+  // ==========================================================================
   // CONSTRUTOR DE NÓS DE QUADRO NO KONVA
   // ==========================================================================
   function createFrameNode(frame) {
@@ -260,48 +460,65 @@ window.addEventListener('DOMContentLoaded', () => {
 
     renderFrameContents(group, frame);
 
-    // Eventos de Seleção e Arraste
+    // Eventos de Seleção, Edição de Texto e Duplo Clique
     group.on('click tap', (e) => {
       if (activeTool === 'select') {
         e.cancelBubble = true;
         selectFrame(frame.id);
+      } else if (activeTool === 'text' && frame.type === 'text') {
+        e.cancelBubble = true;
+        selectFrame(frame.id);
+        startInlineTextEdit(frame, group);
+      }
+    });
+
+    group.on('dblclick dbltap', (e) => {
+      if (frame.type === 'text') {
+        e.cancelBubble = true;
+        selectFrame(frame.id);
+        setTool('text');
+        startInlineTextEdit(frame, group);
       }
     });
 
     group.on('dragmove', () => {
       frame.xMm = Number(pxToMm(group.x()).toFixed(2));
       frame.yMm = Number(pxToMm(group.y()).toFixed(2));
-      updateInspector();
-      updateRulers();
+      updateInspectorValues();
+      scheduleRulerUpdate();
     });
 
     group.on('dragend', () => {
       const newX = Number(pxToMm(group.x()).toFixed(2));
       const newY = Number(pxToMm(group.y()).toFixed(2));
       engine.execute(new TransformFrameCommand(frame.id, { xMm: newX, yMm: newY }));
+      transformer.forceUpdate();
+      contentLayer.batchDraw();
+      uiLayer.batchDraw();
       updateUI();
     });
 
     group.on('transform', () => {
       const scaleX = group.scaleX();
       const scaleY = group.scaleY();
-      const w = Math.max(15, group.width() * scaleX);
-      const h = Math.max(15, group.height() * scaleY);
+      const w = Math.max(15, Math.abs(group.width() * scaleX));
+      const h = Math.max(15, Math.abs(group.height() * scaleY));
       frame.widthMm = Number(pxToMm(w).toFixed(2));
       frame.heightMm = Number(pxToMm(h).toFixed(2));
       frame.xMm = Number(pxToMm(group.x()).toFixed(2));
       frame.yMm = Number(pxToMm(group.y()).toFixed(2));
-      updateInspector();
-      updateRulers();
+      updateInspectorValues();
+      scheduleRulerUpdate();
     });
 
     group.on('transformend', () => {
       const scaleX = group.scaleX();
       const scaleY = group.scaleY();
+      const newW = Math.max(15, Math.abs(group.width() * scaleX));
+      const newH = Math.max(15, Math.abs(group.height() * scaleY));
+
       group.scaleX(1);
       group.scaleY(1);
-      const newW = Math.max(15, group.width() * scaleX);
-      const newH = Math.max(15, group.height() * scaleY);
       group.width(newW);
       group.height(newH);
 
@@ -315,8 +532,19 @@ window.addEventListener('DOMContentLoaded', () => {
       engine.execute(new TransformFrameCommand(frame.id, finalTransform));
       if (frame.type === 'text') {
         engine.computeFlow();
+        for (const f of spread.frames) {
+          if (f.storyId === frame.storyId) {
+            const n = nodeMap.get(f.id);
+            if (n) renderFrameContents(n, f);
+          }
+        }
+      } else {
+        renderFrameContents(group, frame);
       }
-      renderFrameContents(group, frame);
+
+      transformer.forceUpdate();
+      contentLayer.batchDraw();
+      uiLayer.batchDraw();
       updateUI();
     });
 
@@ -385,31 +613,40 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       group.add(border);
 
-      // Linhas formatadas
+      // Linhas formatadas ou texto da Story
       if (frame.computedLines && frame.computedLines.length > 0) {
         for (const line of frame.computedLines) {
+          const isTitle = frame.id === 'frame-title' || frame.name?.includes('Título');
           const tLine = new Konva.Text({
             x: mmToPx(ptToMm(line.x)),
             y: mmToPx(ptToMm(line.y)),
             text: line.text,
-            fontSize: 12,
+            fontSize: line.fontSizePt ? mmToPx(ptToMm(line.fontSizePt)) : (isTitle ? 18 : 12),
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontStyle: isTitle ? 'bold' : 'normal',
             fill: '#0f172a'
           });
           group.add(tLine);
         }
-      } else if (frame.name === 'Título Principal') {
-        const titleText = new Konva.Text({
-          x: 4,
-          y: 4,
-          width: w - 8,
-          text: 'A Nova Era da Tipografia Aberta',
-          fontSize: 18,
-          fontFamily: 'sans-serif',
-          fontStyle: 'bold',
-          fill: '#0f172a'
-        });
-        group.add(titleText);
+      } else {
+        let storyText = '';
+        if (frame.storyId && doc.stories.has(frame.storyId)) {
+          storyText = doc.stories.get(frame.storyId).getFullText();
+        }
+        if (storyText) {
+          const isTitle = frame.id === 'frame-title' || frame.name?.includes('Título');
+          const tNode = new Konva.Text({
+            x: 4,
+            y: 4,
+            width: w - 8,
+            text: storyText,
+            fontSize: isTitle ? 18 : 12,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontStyle: isTitle ? 'bold' : 'normal',
+            fill: '#0f172a'
+          });
+          group.add(tNode);
+        }
       }
 
       // Indicador de Transbordo (Overflow +)
@@ -452,6 +689,10 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function selectFrame(frameId) {
+    if (activeTextEditor && (!frameId || activeTextEditor.frame.id !== frameId)) {
+      stopInlineTextEdit(true);
+    }
+
     if (!frameId) {
       selectedFrame = null;
       transformer.nodes([]);
@@ -465,8 +706,8 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     }
     uiLayer.batchDraw();
-    updateInspector();
-    updateRulers();
+    buildInspectorDOM();
+    scheduleRulerUpdate();
   }
 
   // ==========================================================================
@@ -482,6 +723,35 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Verificar se clicou em um quadro existente na contentLayer
+    let clickedGroup = null;
+    let curr = e.target;
+    while (curr && curr !== stage) {
+      if (curr.getParent && curr.getParent() === contentLayer) {
+        clickedGroup = curr;
+        break;
+      }
+      curr = curr.getParent ? curr.getParent() : null;
+    }
+
+    if (clickedGroup) {
+      const frameId = clickedGroup.id();
+      const frame = spread.getFrame(frameId);
+
+      if (activeTool === 'select') {
+        selectFrame(frameId);
+        return;
+      }
+
+      if (activeTool === 'text' && frame) {
+        if (frame.type === 'text') {
+          selectFrame(frameId);
+          startInlineTextEdit(frame, clickedGroup);
+          return;
+        }
+      }
+    }
+
     if (activeTool === 'select') {
       // Se clicou no fundo do stage (não num quadro)
       if (e.target === stage || e.target.getLayer() === pageLayer) {
@@ -490,7 +760,7 @@ window.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Ferramentas de Criação (Texto, Imagem, Forma)
+    // Ferramentas de Criação (Texto, Imagem, Forma) em área vazia
     const pos = stage.getPointerPosition();
     const transform = stage.getAbsoluteTransform().copy().invert();
     const stagePos = transform.point(pos);
@@ -520,7 +790,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const curX = ((pxToMm(stagePos.x) - originXMm) * unitFactor).toFixed(1);
       const curY = ((pxToMm(stagePos.y) - originYMm) * unitFactor).toFixed(1);
       document.getElementById('statCursor').innerHTML = `Coordenadas: <span>${curX}, ${curY} ${currentRulerUnit}</span>`;
-      updateRulers();
+      scheduleRulerUpdate();
     }
 
     if (!isDrawing) return;
@@ -540,7 +810,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   stage.on('mouseleave', () => {
     lastPointerPos = null;
-    updateRulers();
+    scheduleRulerUpdate();
   });
 
   stage.on('mouseup touchend', (e) => {
@@ -578,7 +848,13 @@ window.addEventListener('DOMContentLoaded', () => {
     let newFrame;
     if (activeTool === 'text') {
       newFrame = new TextFrame(frameOpts);
-      newFrame.storyId = story.id;
+      const newStory = new Story({
+        id: `story-${newFrame.id}`,
+        title: newFrame.name,
+        paragraphs: [{ text: 'Digite seu texto aqui...', paragraphStyleId: 'pstyle-body' }]
+      });
+      doc.addStory(newStory);
+      newFrame.storyId = newStory.id;
     } else if (activeTool === 'image') {
       newFrame = new ImageFrame(frameOpts);
     } else {
@@ -592,7 +868,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
     syncAllFrames();
     selectFrame(newFrame.id);
-    setTool('select');
+
+    if (newFrame.type === 'text') {
+      const newNode = nodeMap.get(newFrame.id);
+      if (newNode) {
+        startInlineTextEdit(newFrame, newNode);
+      }
+    } else {
+      setTool('select');
+    }
   });
 
   // Zoom com a roda do mouse centrado no cursor
@@ -634,6 +918,10 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   function setTool(toolId) {
+    if (activeTextEditor && toolId !== 'text') {
+      stopInlineTextEdit(true);
+    }
+
     activeTool = toolId;
     toolButtons.forEach(btn => {
       if (btn.getAttribute('data-tool') === toolId) {
@@ -645,6 +933,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
     if (activeTool === 'select') {
       stage.container().style.cursor = MOUSE_CLICK_CURSOR;
+      transformer.visible(true);
+    } else if (activeTool === 'text') {
+      stage.container().style.cursor = 'text';
       transformer.visible(true);
     } else if (activeTool === 'pan') {
       stage.container().style.cursor = 'grab';
@@ -659,7 +950,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   window.addEventListener('keydown', (e) => {
-    if (document.activeElement.tagName === 'INPUT') return;
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
 
     if (e.key === 'v' || e.key === 'V') setTool('select');
     else if (e.key === 't' || e.key === 'T') setTool('text');
@@ -948,12 +1239,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const btnUndo = document.getElementById('btnUndo');
   const btnRedo = document.getElementById('btnRedo');
 
-  function updateInspector() {
+  function buildInspectorDOM() {
     if (!selectedFrame) {
       inspectorContent.innerHTML = `
         <div class="inspector-section" style="color: #64748b; font-size: 12px; text-align: center; padding: 40px 16px;">
           Nenhum quadro selecionado.<br><br>
-          Clique em uma caixa no canvas para ajustar dimensões ou puxar as 8 alças.
+          Clique em uma caixa no canvas para ajustar dimensões, puxar as 8 alças ou editar texto.
         </div>
       `;
       statSelection.innerHTML = 'Seleção: <span>Nenhum quadro</span>';
@@ -983,6 +1274,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const valY = (relYMm * unitFactor).toFixed(1);
     const valW = (selectedFrame.widthMm * unitFactor).toFixed(1);
     const valH = (selectedFrame.heightMm * unitFactor).toFixed(1);
+
+    let storyText = '';
+    if (selectedFrame.type === 'text') {
+      if (selectedFrame.storyId && doc.stories.has(selectedFrame.storyId)) {
+        storyText = doc.stories.get(selectedFrame.storyId).getFullText();
+      } else if (selectedFrame.id === 'frame-title') {
+        storyText = 'A Nova Era da Tipografia Aberta';
+      }
+    }
 
     inspectorContent.innerHTML = `
       <div class="inspector-section">
@@ -1020,11 +1320,18 @@ window.addEventListener('DOMContentLoaded', () => {
 
       ${selectedFrame.type === 'text' ? `
         <div class="inspector-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span class="section-title" style="margin-bottom: 0;">Conteúdo do Texto</span>
+            <button class="btn" id="btnOpenInlineEditor" style="padding: 2px 8px; font-size: 10px;">✏️ Editar na Tela</button>
+          </div>
+          <textarea id="inpStoryText" placeholder="Digite o conteúdo do texto aqui..." style="width: 100%; height: 90px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; padding: 6px; font-size: 11px; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; resize: vertical; box-sizing: border-box; line-height: 1.4;">${storyText}</textarea>
+        </div>
+        <div class="inspector-section">
           <span class="section-title">Fluxo Tipográfico</span>
           <div style="font-size: 11px; color: #94a3b8; line-height: 1.6;">
             Matéria: <strong>${selectedFrame.storyId || 'Nenhuma'}</strong><br>
-            Linhas formatadas: <strong>${selectedFrame.computedLines?.length || 0}</strong><br>
-            Status: <strong style="color: ${selectedFrame.hasOverflow ? '#ef4444' : '#4ade80'};">
+            Linhas formatadas: <strong id="lblTextLinesCount">${selectedFrame.computedLines?.length || 0}</strong><br>
+            Status: <strong id="lblTextOverflowStatus" style="color: ${selectedFrame.hasOverflow ? '#ef4444' : '#4ade80'};">
               ${selectedFrame.hasOverflow ? 'Transbordo (+)' : 'Encaixe Perfeito'}
             </strong>
           </div>
@@ -1042,7 +1349,8 @@ window.addEventListener('DOMContentLoaded', () => {
       currentRulerUnit = (currentRulerUnit === 'cm') ? 'mm' : 'cm';
       const rCorner = document.getElementById('ruler-corner');
       if (rCorner) rCorner.innerText = currentRulerUnit;
-      updateUI();
+      buildInspectorDOM();
+      scheduleRulerUpdate();
     });
 
     const bindInput = (id, prop, isX = false, isY = false) => {
@@ -1066,7 +1374,10 @@ window.addEventListener('DOMContentLoaded', () => {
             node.y(mmToPx(selectedFrame.yMm));
             node.width(mmToPx(selectedFrame.widthMm));
             node.height(mmToPx(selectedFrame.heightMm));
+            node.scaleX(1);
+            node.scaleY(1);
             renderFrameContents(node, selectedFrame);
+            transformer.forceUpdate();
             contentLayer.batchDraw();
             uiLayer.batchDraw();
           }
@@ -1080,6 +1391,21 @@ window.addEventListener('DOMContentLoaded', () => {
     bindInput('inpW', 'widthMm', false, false);
     bindInput('inpH', 'heightMm', false, false);
 
+    const inpStory = document.getElementById('inpStoryText');
+    if (inpStory) {
+      inpStory.addEventListener('input', () => {
+        updateFrameText(selectedFrame, inpStory.value);
+      });
+    }
+
+    document.getElementById('btnOpenInlineEditor')?.addEventListener('click', () => {
+      const node = nodeMap.get(selectedFrame.id);
+      if (node) {
+        setTool('text');
+        startInlineTextEdit(selectedFrame, node);
+      }
+    });
+
     document.getElementById('btnDeleteFrame').addEventListener('click', () => {
       engine.execute(new RemoveFrameCommand(selectedFrame.id));
       selectFrame(null);
@@ -1088,12 +1414,16 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function updateInspector() {
+    buildInspectorDOM();
+  }
+
   function updateUI() {
     lblZoom.innerText = Math.round(stage.scaleX() * 100) + '%';
     btnUndo.disabled = !engine.history.canUndo();
     btnRedo.disabled = !engine.history.canRedo();
-    updateInspector();
-    updateRulers();
+    updateInspectorValues();
+    scheduleRulerUpdate();
   }
 
   // Zoom Fit
