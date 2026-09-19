@@ -1,7 +1,7 @@
 /**
- * OpenDTP Studio — Konva-Powered Interactive DTP Workspace
+ * Nyah Editor Studio — Konva-Powered Interactive DTP Workspace
  * 
- * Integração robusta entre o motor editorial (OpenDTPEngine), o modelo de
+ * Integração robusta entre o motor editorial, o modelo de
  * comandos transacionais (Undo/Redo) e o motor gráfico Konva.js (Transformer de 8 alças).
  */
 
@@ -14,7 +14,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // 1. Inicializar Motor do Documento
   const engine = new OpenDTPEngine();
   const doc = engine.createDocument({
-    title: 'Edição Especial OpenDTP',
+    title: 'Edição Especial Nyah Editor',
     pageSetup: {
       preset: 'A4',
       widthMm: 210,
@@ -36,7 +36,7 @@ window.addEventListener('DOMContentLoaded', () => {
     'refém de formatos binários opacos e ecossistemas proprietários fechados.'
   );
   story.addParagraph(
-    'O OpenDTP inaugura uma nova fase: um motor aberto onde cada página, cada vetor e cada linha ' +
+    'O Nyah Editor inaugura uma nova fase: um motor aberto onde cada página, cada vetor e cada linha ' +
     'tipográfica são cidadãos de primeira classe em arquivos JSON auditáveis pelo Git. A renderização a 60 FPS ' +
     'com fatiamento livre e hifenização silábica garante total fidelidade entre a tela e a impressora.'
   );
@@ -1174,7 +1174,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'OpenDTP_Documento_A4.pdf';
+      a.download = 'Nyah_Editor_Documento_A4.pdf';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

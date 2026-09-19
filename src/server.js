@@ -1,5 +1,5 @@
 /**
- * OpenDTP - Local Zero-Dependency Dev & Studio Server
+ * Nyah Editor - Local Zero-Dependency Dev & Studio Server
  * 
  * Servidor HTTP nativo em Node.js (sem dependências externas)
  * para servir a aplicação do estúdio, assets e amostras.
@@ -59,7 +59,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   const url = `http://localhost:${PORT}/src/ui/app.html`;
   console.log('=============================================================');
-  console.log('🚀 SERVIDOR OPENDTP STUDIO EM EXECUÇÃO');
+  console.log('🚀 SERVIDOR NYAH EDITOR STUDIO EM EXECUÇÃO');
   console.log('=============================================================');
   console.log(`🌐 Acesso Web: ${url}`);
   console.log('=============================================================');

@@ -1,7 +1,7 @@
-# OpenDTP — O Software de DTP Aberto, Moderno e Visual
+# Nyah Editor — O Software de DTP Aberto, Moderno e Visual
 
-> **Repositório de Pesquisa, Engenharia e Desenvolvimento do OpenDTP**  
-> Localização: `C:\Users\Ryzen\Desktop\teste\SOFTWARE DTP`  
+> **Repositório de Pesquisa, Engenharia e Desenvolvimento do Nyah Editor** (antigo OpenDTP)  
+> Localização: `F:\01_SOFTWARES_E_APPS\Nyah_Editor`  
 > Revisão: Setembro de 2026
 
 ---
@@ -9,7 +9,7 @@
 ## 📂 Estrutura do Workspace
 
 ```text
-SOFTWARE DTP/
+Nyah_Editor/
 ├── README.md               # Visão geral do workspace e guia de início
 ├── package.json            # Scripts de execução e testes
 ├── docs/                   # Toda a documentação estratégica e técnica

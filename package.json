@@ -1,7 +1,7 @@
 {
-  "name": "open-dtp",
+  "name": "nyah-editor",
   "version": "0.1.0",
-  "description": "Estudo, arquitetura e protótipos para um software moderno e aberto de DTP.",
+  "description": "Nyah Editor — Software moderno, aberto e visual de editoração gráfica e DTP.",
   "private": true,
   "scripts": {
     "spike:1": "node spikes/spike-01-freeform-text-slicer/run.js",
